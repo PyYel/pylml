@@ -1,42 +1,29 @@
-# PyYel
-*PyYel* is a personnal library that aims at helping the deployement of strong data science tools, from data handling to deep learning.
+# PyYel-MLOps
+
+The PyYel Machine Learning Operations extension. This repository regroups tools to simplify and speed up Python AI solutions conception process.
 
 ## Quick start
-1. Install the library.
+1. Clone the repository and Install the library.
 
 ``` bash
-your_path> pip install PyYel
+your_path/PyYel-MLOps> pip install .
 ```
 
 2. Import the library into you code.
 
 ``` python
-import pyl
+import pylml
 ```
 
 3. Import the relevant features.
 
 ``` python
-from pyl.models.LLM import LLMDecodingPhi, LLMEncodingBARTLargeMNLI
-from pyl.models.CNN import CNNClassificationResNet
+from pylml.LLM import LLMDecodingPhi, LLMEncodingBARTLargeMNLI
+from pylml.CNN import CNNClassificationResNet
 ```
 
 ## Content
 
-### Data
-A collection of features to manipulate the data. Can be used to implement pipelines, preprocessing, data augmentation...
-
-- **Augmentations:** a compilation of classes featuring methods to augment a datapoint of various type.
-    - ImageAugmentation : features a handfull of functions that can augment any type of data, as well as its labels.
-    - TODO
-
-- **Reduction:** acompilation of classes featuring methods to reduce datapoint of various type.
-    - TODO/TO-REWORK
-
-- **Utils:** a collection of powerful tools that permit an easy manipulation of the datapoints.
-    - TODO/TO-REWORK
-
-### Models
 The neural networks implementations. These are grouped by types and tasks.
 
 - **CNN (Convolutional Neural Networks)**
@@ -83,11 +70,5 @@ The neural networks implementations. These are grouped by types and tasks.
 
 **Note:** _Computer vision transformers._
 
-
-### Utils
-A collection of higher-level tools, that simplifies the manipulation of the library 
-
-#### TODO/TO-REWORK
-
 ## Notes
-TODO
+See also ***PyYel-DevOps*** and ***PyYel-CloudOps*** for development and deployment tools.

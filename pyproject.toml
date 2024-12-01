@@ -3,8 +3,8 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "PyYel"
-version = "0.1.2"
+name = "pyyel-mlops"
+version = "0.1.3"
 description = "Model backbone inheritance across same class LLM"
 readme = "README.md"
 requires-python = ">=3.12"

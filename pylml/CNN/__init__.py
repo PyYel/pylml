@@ -1,4 +1,14 @@
 
+__all__ = [
+    "CNNClassificationResNet",
+    "CNNDetectionFasterRCNN",
+    "CNNDetectionRetinaNet",
+    "CNNDetectionSSD",
+    "CNNKeypoint",
+    "CNNSegmentationDeeplabV3",
+    "CNNSegmentationFCN"
+]
+
 
 from .src.CNNClassificationResNet import CNNClassificationResNet
 from .src.CNNDetectionFasterRCNN import CNNDetectionFasterRCNN

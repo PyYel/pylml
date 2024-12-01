@@ -24,9 +24,9 @@ from pylml.CNN import CNNClassificationResNet
 
 ## Content
 
-The neural networks implementations. These are grouped by types and tasks.
+The content of pylml. Unless specified diferently, all the modules may be directly imported into Python code as libraries.
 
-- **CNN (Convolutional Neural Networks)**
+### CNN (Convolutional Neural Networks)
 
 |Source model|PyYel model|Task|Status|
 |------------|-----------|----|------|
@@ -40,14 +40,15 @@ The neural networks implementations. These are grouped by types and tasks.
 
 **Note:** _Traditionnal computer vision networks. Features a model builder to design custom small-sized networks._
 
-- **FCN (Fully Connected Networks)**
+### FCN (Fully Connected Networks)
 
 |Source model|PyYel model|Task|Status|
 |------------|-----------|----|------|
 |/|FCNBuilder|/|TODO|
+
 **Note:** _Dense models. Features a model builder to design custom small-sized networks._
 
-- **LLM (Large Language Models)**
+### LLM (Large Language Models)
 
 |Source model|PyYel model|Task|Status|
 |------------|-----------|----|------|
@@ -62,7 +63,7 @@ The neural networks implementations. These are grouped by types and tasks.
 
 **Note:** _NLP transformers._
 
-- **LVM (Large Vision Models)**
+### LVM (Large Vision Models)
 
 |Source model|PyYel model|Task|Status|
 |------------|-----------|----|------|

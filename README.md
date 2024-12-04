@@ -72,4 +72,4 @@ The content of pylml. Unless specified diferently, all the modules may be direct
 **Note:** _Computer vision transformers._
 
 ## Notes
-See also ***PyYel-DevOps*** and ***PyYel-CloudOps*** for development and deployment tools.
+See also [***PyYel-DevOps***](https://github.com/PyYel/PyYel-DevOps) and [***PyYel-CloudOps***](https://github.com/PyYel/PyYel-CloudOps) for development and deployment tools.

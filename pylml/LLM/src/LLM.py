@@ -81,12 +81,13 @@ class LLM(ABC):
         ]
         ignore_patterns = [
             "tf_model.h5",              # TensorFlow weights
-            "flax_model.msgpack",        # JAX/Flax weights
-            "*.onnx",                    # Optional: Exclude ONNX files if present
-            "*.tflite",                  # Optional: Exclude TensorFlow Lite files
+            "flax_model.msgpack",       # Exclude JAX/Flax weights
+            "*.onnx",                   # Exclude ONNX files if present
+            "*.tflite",                 # Exclude TensorFlow Lite files
+            "*.ot",                     # Exclude Rust models
         ]
 
-        snapshot_download(repo_id=self.model_name, local_dir=self.model_folder, ignore_patterns=ignore_patterns, allow_patterns=None)
+        snapshot_download(repo_id=self.model_name, local_dir=self.model_folder, ignore_patterns=ignore_patterns, allow_patterns=allow_patterns)
 
         return True
 

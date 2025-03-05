@@ -33,16 +33,18 @@ except:
     None
 
 from .CNN import CNN
-from .datasets.deeplabdataset import DeeplabV3Dataset
+from .datasets.fcndataset import FCNDataset
+from .samplers.sampler import Sampler
+from .processing import datacompose, datatransforms, targetcompose, targettransforms
 
-class CNNSegmentationDeeplabV3(CNN):
+class CNNSegmentationFCN(CNN):
     """
-    Class of method to labelize (segmentation) images using Deeplab V3 model.
-    The model is based on the ``'Rethinking Atrous Convolution for Semantic Image Segmentation'`` paper, published in 2017.
+    Class of method to segment images using FCN model.
+    The model is based on the ``'Fully Convolutional Networks for Semantic Segmentation'`` paper, published in 2014.
 
     The weights are provided by PyTorch torchvision hub. BACKWARD COMPATIBILIY ISN'T GUARANTED.
-    - DeeplabV3_ResNet50 is the <ResNet50> ``version``
-    - DeeplabV3_MobileNet is the <MobileNet> (lite/light) ``version`` 
+    - FCNResNet50 is the ``ResNet50`` version
+    - FCNResNet101 is the ``ResNet101`` version
     """
 
     def __init__(self, df:pd.DataFrame, name:str=None, version="ResNet50", **kwargs) -> None:
@@ -51,11 +53,17 @@ class CNNSegmentationDeeplabV3(CNN):
         ----------
         - df: the pandas dataframe (csv file) featuring the datapoints paths and its associated labels
         - name: the name (without the .pth extension) of the model to load/save under the ``/weights/`` folder
-        - version: the version of the model to load
+        - version: the version of the model
+            - To load a FCNResNet50 architecture, choose ``version="ResNet50"``
+            - To load a FCNResNet101 architecture, choose ``version="ResNet101"``
         """
 
-        self.name = name
-        if version in ["ResNet50", "MobileNet"]:
+        if name:
+            self.name = name
+        else:
+            self.name = "default"
+
+        if version in ["ResNet50", "ResNet101"]:
             self.version = version
         else:
             raise ValueError("Invalid model version")
@@ -73,50 +81,55 @@ class CNNSegmentationDeeplabV3(CNN):
         loaded instead. If the local weights are not available, they are downloaded from PyTorch hub.
         """
 
-        if os.path.exists(os.path.join(WEIGHTS_WORKING_PATH, f"DeeplabV3{self.version}_{self.name}_label_encoder.json")):
+        if os.path.exists(os.path.join(WEIGHTS_WORKING_PATH, f"FCN{self.version}_{self.name}_label_encoder.json")):
             # Tries to retreive the existing dictionnary, otherwise self.sample_batch() will generate a new one
-            with open(os.path.join(WEIGHTS_WORKING_PATH, f"DeeplabV3{self.version}_{self.name}_label_encoder.json"), "r") as json_file:
+            with open(os.path.join(WEIGHTS_WORKING_PATH, f"FCN{self.version}_{self.name}_label_encoder.json"), "r") as json_file:
                 self.label_encoder = json.load(json_file)
                 self.num_classes = len(self.label_encoder) + 1
         else:
             self.label_encoder = None
             self.num_classes = None
-        print("SegmentationDeeplabV3 >> Encoded labels:", self.label_encoder, "\nSegmentationDeeplabV3 >> Number of classes:", self.num_classes)
+        print("SegmentationFCN >> Encoded labels:", self.label_encoder, "\nSegmentationFCN >> Number of classes:", self.num_classes)
 
-        if os.path.exists(os.path.join(WEIGHTS_WORKING_PATH, f"DeeplabV3_{self.version}_{self.name}.pth")):
+        if os.path.exists(os.path.join(WEIGHTS_WORKING_PATH, f"FCN{self.version}_{self.name}.pth")):
             # If the custom weights exist, they are loaded
-            self.model = torch.load(os.path.join(WEIGHTS_WORKING_PATH, f"DeeplabV3_{self.version}_{self.name}.pth"))
-            print("SegmentationDeeplabV3 >> Custom weights loaded:", f"DeeplabV3_{self.version}_{self.name}.pth")
+            self.model = torch.load(os.path.join(WEIGHTS_WORKING_PATH, f"FCN{self.version}_{self.name}.pth"))
+            print("SegmentationFCN >> Custom weights loaded:", f"FCN{self.version}_{self.name}.pth")
 
         else:
-            if os.path.exists(os.path.join(WEIGHTS_LEGACY_PATH, f"DeeplabV3_{self.version}.pth")):
+            if os.path.exists(os.path.join(WEIGHTS_LEGACY_PATH, f"FCN{self.version}.pth")):
                 # If the custom wieghts do not exist, the local default pretrained version is loaded
                 if self.version == "ResNet50":
-                    self.model = models.segmentation.deeplabv3_resnet50()
-                    self.model.load_state_dict(torch.load(os.path.join(WEIGHTS_LEGACY_PATH, "DeeplabV3_ResNet50.pth")))
-                elif self.version == "MobileNet":
-                    self.model = models.segmentation.deeplabv3_mobilenet_v3_large()
-                    self.model.load_state_dict(torch.load(os.path.join(WEIGHTS_LEGACY_PATH, "DeeplabV3_MobileNet.pth")))
-                else:
-                    self.model = models.segmentation.deeplabv3_resnet50()
-                    self.model.load_state_dict(torch.load(os.path.join(WEIGHTS_LEGACY_PATH, "DeeplabV3_ResNet50.pth")))
+                    self.model = models.segmentation.fcn_resnet50()
+                    state_dict = torch.load(os.path.join(WEIGHTS_LEGACY_PATH, "FCNResNet50.pth"))
+                    aux_classifier = [key for key in state_dict.keys() if key.startswith("aux_classifier.")]
+                    for key in aux_classifier:
+                        state_dict.pop(key, None)
+                    self.model.load_state_dict(state_dict)
 
-                print("SegmentationDeeplabV3 >> Default weights loaded:", f"DeeplabV3_{self.version}.pth")
+                elif self.version == "ResNet101":
+                    self.model = models.segmentation.fcn_resnet101()
+                    self.model.load_state_dict(torch.load(os.path.join(WEIGHTS_LEGACY_PATH, "FCNResNet101.pth")))
+                else:
+                    self.model = models.segmentation.fcn_resnet50()
+                    self.model.load_state_dict(torch.load(os.path.join(WEIGHTS_LEGACY_PATH, "FCNResNet50.pth")))
+
+                print("SegmentationFCN >> Default weights loaded:", f"FCN{self.version}.pth")
 
             else:
                 # If the local default version doesn't exist, it is downloaded from PyTorch hub
-                if self.version == "ResNet":
-                    self.model = models.segmentation.deeplabv3_resnet50(weights=models.segmentation.DeepLabV3_ResNet50_Weights.DEFAULT)
-                    torch.save(self.model.state_dict(), os.path.join(WEIGHTS_LEGACY_PATH, "DeeplabV3_ResNet50.pth"))
-                elif self.version == "MobileNet":
-                    self.model = models.segmentation.deeplabv3_mobilenet_v3_large(weights=models.segmentation.DeepLabV3_MobileNet_V3_Large_Weights.DEFAULT)
-                    torch.save(self.model.state_dict(), os.path.join(WEIGHTS_LEGACY_PATH, "DeeplabV3_MobileNet.pth"))
+                if self.version == "ResNet50":
+                    self.model = models.segmentation.fcn_resnet50(weights=models.segmentation.FCN_ResNet50_Weights.DEFAULT)
+                    torch.save(self.model.state_dict(), os.path.join(WEIGHTS_LEGACY_PATH, "FCNResNet50.pth"))
+                elif self.version == "ResNet101":
+                    self.model = models.segmentation.fcn_resnet101(weights=models.segmentation.FCN_ResNet101_Weights.DEFAULT)
+                    torch.save(self.model.state_dict(), os.path.join(WEIGHTS_LEGACY_PATH, "FCNResNet101.pth"))
                 else:
                     self.version = "ResNet50"
-                    self.model = models.segmentation.deeplabv3_resnet50(weights=models.segmentation.DeepLabV3_ResNet50_Weights.DEFAULT)
-                    torch.save(self.model.state_dict(), os.path.join(WEIGHTS_LEGACY_PATH, "DeeplabV3_ResNet50.pth"))
+                    self.model = models.segmentation.fcn_resnet50(weights=models.segmentation.FCN_ResNet50_Weights.DEFAULT)
+                    torch.save(self.model.state_dict(), os.path.join(WEIGHTS_LEGACY_PATH, "FCNResNet50.pth"))
 
-                print("SegmentationDeeplabV3 >> Default legacy weights dowloaded from: PyTorch hub")
+                print("SegmentationFCN >> Default legacy weights dowloaded from: PyTorch hub")
             self.new_model = True
 
         self.model.to(self.device)
@@ -130,11 +143,15 @@ class CNNSegmentationDeeplabV3(CNN):
         Args
         ---
         - data_transform: the datapoints preprocessing pipeline to load. Can be overwritten by a custom Compose object.
-            - TODO
+            - "default": default image processing and 224/224 resizing
+            - "15/9": default image processing and 15/9 aspect ratio resizing
+            - "hd": default image processing and 512/512 resizing
             - torchvision.Compose: torchvision.Compose pipeline object
             - datatransforms.Compose: custom PyYel processing.datatransforms.Compose pipeline object
         - target_transform: the labels preprocessing pipeline to load. Can be overwritten by a custom Compose object.
-            - TODO
+            - "default": default labels processing and 224/224 resizing
+            - "15/9": default labels processing and 15/9 aspect ratio resizing
+            - "hd": default labels processing and 512/512 resizing
             - torchvision.Compose: torchvision.Compose pipeline object (not recommended)
             - targettransforms.Compose: custom PyYel processing.datatransforms.Compose pipeline object
         - test_size: the proportion of examples to allocate to the testing dataloader. Must be a value between 0 and 1.
@@ -147,30 +164,48 @@ class CNNSegmentationDeeplabV3(CNN):
         - num_workers: int = 0
         """
 
-        if transform:
-            # Overwrites the default infered transform
-            self.transform = transform
-        else:
-            self.transform = transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-                transforms.Resize(size=(800,800))]
-                )
-
         sampler = Sampler(df=self.df, device=self.device)
 
         # Sampler outputs the datapoint path, as well as the corresponding labels rows from the DB
         # In the context of SSD, i.e. object detection, the output is as follows:
         # labels_list = [(datapoint_key, class_int, x_min, y_min, x_max, y_max, class_txt), ...]
         datapoints_list, labels_list, unique_txt_classes = sampler.load_from_df(datapoints_type="Image_datapoints",
-                                                                                labels_type="Image_detection")
-
-        # The labels are a list of tuples, where each tuple represents a box and its label
-        # So it has to be regrouped as a list of subarrays, where one array represents all
-        # the boxes shown on an image, i.e of shape [N, 4]
-        # The SSD input is thus a list of [{boxes:[N, 4], labels:[N,]}, ...]
-        # labels_list = np.array(labels_list, dtype=object)
+                                                                                labels_type="Image_segmentation")
         
+        if data_transform == "default" or target_transform == "default":
+            self.data_transform = datacompose.DataCompose([
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                transforms.Resize(size=(224, 224))
+                ])
+            self.target_transform = targetcompose.TargetCompose([
+                transforms.ToTensor(),
+                transforms.Resize(size=(224, 224))
+                ])
+        elif data_transform == "15/9" or target_transform == "15/9":
+            self.data_transform = datacompose.DataCompose([
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                transforms.Resize(size=(800, 1333))
+                ])
+            self.target_transform = targetcompose.TargetCompose([
+                transforms.ToTensor(),
+                transforms.Resize(size=(800, 1333))
+                ])
+        elif data_transform == "hd" or target_transform == "hd":
+            self.data_transform = datacompose.DataCompose([
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                transforms.Resize(size=(512, 512))
+                ])
+            self.target_transform = targetcompose.TargetCompose([
+                transforms.ToTensor(),
+                transforms.Resize(size=(512, 512))
+                ])
+        else:
+            self.data_transform = data_transform
+            self.target_transform = target_transform
+
         # If a label_encoder wasn't loaded, a new one is created
         if not self.label_encoder:
             self.label_encoder = {}
@@ -178,12 +213,13 @@ class CNNSegmentationDeeplabV3(CNN):
                 self.label_encoder[class_txt] = idx
             self.num_classes = len(self.label_encoder) + 1
 
-        # The label dictionnary is reshaped as a valid SSD input, which is a dictionary 
-        labels_list = [{'boxes':label_array[:, -5:-1].astype(np.float32), 'labels':[self.label_encoder[class_txt] for class_txt in label_array[:, -1]]} for label_array in labels_list]
+        labels_list = [array[0] for array in labels_list]
 
         # The Sampler objects are overwritten with the list of dictionnaries
         sampler.split_in_two(datapoints_list=datapoints_list, labels_list=labels_list, test_size=test_size)
-        self.train_dataloader, self.test_dataloader = sampler.send_to_dataloader(dataset=DeeplabV3Dataset, transform=self.transform, **kwargs)
+        self.train_dataloader, self.test_dataloader = sampler.send_to_dataloader(dataset=FCNDataset, 
+                                                                                 data_transform=self.data_transform, target_transform=self.target_transform,
+                                                                                 **kwargs)
 
         return self.train_dataloader, self.test_dataloader
 
@@ -191,8 +227,7 @@ class CNNSegmentationDeeplabV3(CNN):
     def train_model(self, 
               num_epochs:int=10,
               lr:float=0.001,
-              rpn_retraining=False,
-              backbone_retraining=False
+              backbone_retraining=False,
               ):
         """
         Retrains the loaded SSD/VGG model on the previoulsly sampled batch.
@@ -214,60 +249,63 @@ class CNNSegmentationDeeplabV3(CNN):
 
         self._assert_model()
 
+        # # debug
+        # for model1, model2 in zip(self.model.named_parameters(), models.segmentation.fcn_resnet50().named_parameters()):
+        #     # print(model1[0], model1[1].shape, model2[0], model2[1].shape)
+        #     # print(model1[0], model2[0])
+        #     if model1[0] != model2[0]:
+        #         print("pretrained model:", model1[0], model1[1].shape)
+        #         print("torch model:", model2[0], model2[1].shape)
+        #     if model1[1].shape != model2[1].shape:
+        #         print("pretrained model:", model1[0], model1[1].shape)
+        #         print("torch model:", model2[0], model2[1].shape)
+
         # The resnet backbone
         self.model.backbone.requires_grad_(backbone_retraining)
-        # The region proposal network, i.e. the first stage detector
-        self.model.rpn.requires_grad_(rpn_retraining)
-        # The classification head and its second stage detector
-        self.model.roi_heads.requires_grad_(True)
+        # The classifier is always retrained
+        self.model.classifier.requires_grad_(True)
 
         if self.new_model:
             # The classifying head is replaced
-            print("SegmentationDeeplabV3 >> A new head is retrained")
-            if self.version == "ResNet50_v1":
-                self.model.roi_heads = models.detection.fasterrcnn_resnet50_fpn(num_classes = self.num_classes+1).roi_heads
-            if self.version == "ResNet50_v2":
-                self.model.roi_heads = models.detection.fasterrcnn_resnet50_fpn_v2(num_classes = self.num_classes+1).roi_heads
-            if self.version == "MobileNet":
-                self.model.roi_heads = models.detection.fasterrcnn_mobilenet_v3_large_fpn(num_classes = self.num_classes+1).roi_heads
-            if self.version == "MobileNet_320":
-                self.model.roi_heads = models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(num_classes = self.num_classes+1).roi_heads
+            print("SegmentationFCN >> A new head is retrained")
+            if self.version == "ResNet50":
+                # self.model.classifier = models.segmentation.fcn.FCNHead(channels=self.num_classes)
+                self.model.classifier[-1] = torch.nn.Conv2d(512, self.num_classes, kernel_size=1)
+            if self.version == "ResNet101":
+                # self.model.classifier = models.segmentation.fcn.FCNHead(channels=self.num_classes)
+                self.model.classifier[-1] = torch.nn.Conv2d(512, self.num_classes, kernel_size=1)
 
         optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
-        scaler = GradScaler()
+        criterion = nn.CrossEntropyLoss()
+        if self.device == "cuda": scaler = GradScaler()
         self.model.to(self.device)
         self.model.train()
 
         running_loss = 0.0
         losses_list = []
         best_loss = 1e12
-        print("SegmentationDeeplabV3 >> Model is training on the training dataset")
+        print("SegmentationFCN >> Model is training on the training dataset")
         for epoch in tqdm(range(num_epochs)):
-            for (images, boxes, labels) in tqdm(self.train_dataloader):
-
-                targets = [{"boxes": box, "labels": label} for box, label in zip(boxes, labels)]
+            for (images, masks) in tqdm(self.train_dataloader):
+                    
                 optimizer.zero_grad()  
 
                 if self.device == "cuda":
                     # Mixed precision acceleration
                     with autocast():
-                        output = self.model(images, targets)  
+                        output = self.model(images, masks)['out']
+                        print(output.shape)
                         # In training, the model will return the head's class & bbox losses, and the RPN's class & bbox losses
-                        if rpn_retraining:
-                            loss = output["loss_classifier"] + output["loss_box_reg"] + output["loss_objectness"] + output["loss_rpn_box_reg"]
-                        else:
-                            loss = output["loss_classifier"] + output["loss_box_reg"]
+                        loss = criterion(output, masks)
 
                         scaler.scale(loss).backward()
                         scaler.step(optimizer)
                         scaler.update()
                 else:
-                    output = self.model(images, targets)  
+                    output = self.model(images)['out']
+                    # print(output.shape)
                     # In training, the model will return the head's class & bbox losses, and the RPN's class & bbox losses
-                    if rpn_retraining:
-                        loss = output["loss_classifier"] + output["loss_box_reg"] + output["loss_objectness"] + output["loss_rpn_box_reg"]
-                    else:
-                        loss = output["loss_classifier"] + output["loss_box_reg"]
+                    loss = criterion(output, masks)
 
                     loss.backward()
                     optimizer.step()
@@ -282,16 +320,16 @@ class CNNSegmentationDeeplabV3(CNN):
 
         # Training dataset evaluation
         self.model.eval()
-        print("SegmentationDeeplabV3 >> Model is evaluating the training dataset")
+        print("SegmentationFCN >> Model is evaluating the training dataset")
         mean_ious = []
         with torch.no_grad():
             pred_per_image = []
-            for batch_idx, (images, true_boxes, true_labels) in tqdm(enumerate(self.train_dataloader)):
+            for batch_idx, (images, masks) in tqdm(enumerate(self.train_dataloader)):
 
                 images = images.to(self.device) 
-                predictions = self.model(images)
+                predictions = torch.argmax(self.model(images)['out'], dim=1)
 
-        return losses_list
+        return images, predictions, losses_list
 
 
     def test_model(self, display=False, threshold=0.5):
@@ -301,7 +339,7 @@ class CNNSegmentationDeeplabV3(CNN):
         self._assert_model()
 
         self.model.eval()
-        print("SegmentationDeeplabV3 >> Model is evaluating the testing dataset")
+        print("SegmentationFCN >> Model is evaluating the testing dataset")
         with torch.no_grad():
             pred_per_image = []
             for batch_idx, (images, true_boxes, true_labels) in enumerate(tqdm(self.test_dataloader)):
@@ -322,7 +360,7 @@ class CNNSegmentationDeeplabV3(CNN):
 
         self.model.eval()
         return self.model(datapoint)
-    
+
     def save_model(self, name:str=None):
         """
         Saves both current model and its weights into the /weights/ folder.
@@ -338,13 +376,12 @@ class CNNSegmentationDeeplabV3(CNN):
         self._assert_model()
 
         if name:
-            torch.save(self.model, os.path.join(WEIGHTS_WORKING_PATH, f"{name}.pth"))
-            with open(os.path.join(WEIGHTS_WORKING_PATH, f"{name}_label_encoder.json"), "w") as json_file:
-                json.dump(self.label_encoder, json_file)
-        else:
-            torch.save(self.model, f"{self.name}.pth")
-            with open(f"{self.name}_label_encoder.json", "w") as json_file:
-                json.dump(self.label_encoder, json_file)
+            self.name = name
+        
+        torch.save(self.model, os.path.join(WEIGHTS_WORKING_PATH, f"FCN{self.version}_{self.name}.pth"))
+        with open(os.path.join(WEIGHTS_WORKING_PATH, f"FCN{self.version}_{self.name}_LabelEncoder.json"), "w") as json_file:
+            json.dump(self.label_encoder, json_file)
+
         return None
 
     def _assert_model(self):
@@ -356,8 +393,6 @@ class CNNSegmentationDeeplabV3(CNN):
         return True
 
 
-
-
 if __name__ == "__main__":
     from database.scripts.connection import ConnectionSQLite
     from PIL import Image
@@ -367,8 +402,20 @@ if __name__ == "__main__":
     coo = ConnectionSQLite()
     conn = coo.connect_database()
 
-    model = SegmentationDeeplabV3(conn=conn, name=None, version="ResNet50")
+    model = SegmentationFCN(conn=conn, name=None, version="ResNet50")
     model.load_model()
-    model.sample_batch(subdataset_name="AfricaWildlife", batch_size=10, test_size=0.90, num_workers=0)
-    model.train_model(num_epochs=1, backbone_retraining=False, rpn_retraining=False)
-    model.test_model(display=True)
+    model.sample_batch(subdataset_name="LeafDisease", batch_size=10, test_size=0.99, num_workers=0)
+    images, predictions, loss = model.train_model(num_epochs=10, backbone_retraining=False, lr=10-5)
+    # model.test_model(display=True)
+
+    print(images.shape, predictions.shape)
+    # print(predictions)
+    for k in range(len(images)):
+        plt.subplot(1, 3, 1)    
+        # plt.imshow(images[0,...])
+        plt.imshow(np.clip(np.transpose(images[k,...], (1, 2, 0))*255 + 1 / 2, a_min=0, a_max=1))
+        plt.subplot(1, 3, 2)
+        plt.imshow(predictions[k,...])
+        plt.subplot(1, 3, 3)
+        plt.plot(loss)
+        plt.show()

@@ -15,13 +15,15 @@ import cv2
 import json
 
 
-SERVER_DIR_PATH = os.path.abspath(__file__).split("services")[0]
+PRELABELLING_DIR_PATH = os.path.dirname(os.path.dirname(__file__))
 if __name__ == "__main__":
-    sys.path.append(SERVER_DIR_PATH)
+    sys.path.append(os.path.dirname(PRELABELLING_DIR_PATH))
 
-from services.database.src.scripts.requestdata import RequestData
-from services.aws.src.scripts.s3datahive import S3DataHive
-from services.prelabelling.src.samplers.sampler import Sampler
+from database.scripts.connection import Connection
+from database.scripts.requestdata import RequestData
+from aws.scripts.s3datahive import S3DataHive
+
+from prelabelling.samplers.sampler import Sampler
 from main import CONNECTION
 
 class SingleClsSampler(Sampler):
@@ -39,8 +41,8 @@ class SingleClsSampler(Sampler):
         This single cls sampler handles all the pipeline steps by keeping as many training example as possible
         while removing examples featuring multiple label classes at once.
 
-        Args
-        ----
+        Parameters
+        ----------
         - batch_name: the name of the batch to sample data from
         - task_name: the name of the task to sample labels from. The batch must support this task, otherwise
         the sampling won't be executed
@@ -63,8 +65,8 @@ class SingleClsSampler(Sampler):
         """
         The strategy to apply to select the datapoints.
 
-        Args
-        ----
+        Parameters
+        ----------
         - df: the df to read datapoints from
 
         Returns
@@ -88,7 +90,7 @@ class SingleClsSampler(Sampler):
                 self.df.drop(row_idx, axis=0, inplace=True)
                 self._delete_file(file_path=row["label_path"])
 
-        self.df.to_csv(os.path.join(SERVER_DIR_PATH, "temp", "df_datapoints.csv"), index=False)
+        self.df.to_csv(os.path.join(os.path.dirname(PRELABELLING_DIR_PATH), "temp", "df_datapoints.csv"), index=False)
 
         return self.datapoints_from_labels(df=self.df)
 
@@ -100,7 +102,7 @@ class SingleClsSampler(Sampler):
         self.labels_from_batch(batch_name=self.batch_name, label_task=self.task_name)
         self.df = self.parse_batch_labels(min_contributions=self.min_contributions)
 
-        self.df.to_csv(os.path.join(SERVER_DIR_PATH, "temp", "df_datapoints.csv"), index=False)
+        self.df.to_csv(os.path.join(os.path.dirname(PRELABELLING_DIR_PATH), "temp", "df_datapoints.csv"), index=False)
 
         return self.df
     

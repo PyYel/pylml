@@ -2,23 +2,40 @@ import os
 import sys
 
 import torch 
-from torchvision import models, transforms
-from torchvision.models.detection.ssd import ssd300_vgg16, SSD300_VGG16_Weights
-from torchvision.models.detection.ssdlite import ssdlite320_mobilenet_v3_large, SSDLite320_MobileNet_V3_Large_Weights
-
+from torchvision import models
+from torchvision import transforms
 from torch.utils.data import DataLoader, TensorDataset
+import torch.nn as nn
 from torch.cuda.amp import autocast, GradScaler
 from torch.optim.lr_scheduler import MultiStepLR
 
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import numpy as np
+import sqlite3
 from tqdm import tqdm
 from PIL import Image
 import json
+import cv2
+import multiprocessing as mp
+import pandas as pd
+
+NETWORKS_DIR_PATH = ""
+if __name__ == "__main__":
+    sys.path.append(os.path.dirname(NETWORKS_DIR_PATH))
+
+WEIGHTS_WORKING_PATH = os.path.join(NETWORKS_DIR_PATH, "temp")
+WEIGHTS_LEGACY_PATH = os.path.join(NETWORKS_DIR_PATH, "temp")
+
+try:
+    mp.set_start_method('spawn')
+except:
+    None
 
 from .CNN import CNN
 from .datasets.ssddataset import SSDDataset
 # from .samplers.sampler import Sampler
 from .processing import datacompose, datatransforms, targetcompose, targettransforms
-from .samplers.sampler import Sampler
 
 class CNNDetectionSSD(CNN):
     """
@@ -31,101 +48,89 @@ class CNNDetectionSSD(CNN):
     - SSD512 ins't provided but can be loaded from custom ``weights`` as the <512> ``version`` 
     """
 
-    def __init__(self, weights_path: str = None, version: str = "300") -> None:
+    def __init__(self, df:pd.DataFrame, name:str=None, version="300", **kwargs) -> None:
         """
-        Initializes a pretrained model based on the Microsoft's Phi 3.5 backbone, fine-tuned for text generation.
-
         Parameters
         ----------
-        weights_path: str, None
-            The path to the folder where the models weights should be saved. If None, the current working 
-            directory path will be used instead.
-
-        Versions
-        --------
-        - ``'300'`` _(default)_ : The base version of SSD. 
-            - Initializes the model with ``'microsoft/Phi-3.5-mini-instruct'`` weights for text generation.
-            - For the full bfloat16 model, requires 7.7Go of RAM/VRAM. 
-        
-        - ``'320'``: The light version of SSD. 
-            - Initializes the model with ``'microsoft/Phi-3.5-moe'`` weights for text generation.
-            - The MoE design results in only 6.6 bilion of active parameters.
-            - For the full bfloat16 model, requires 41.9Go of RAM/VRAM.
-
-        Note
-        ----
-        - Quantization may be supported. See ``load_model()``.
+        - df: the pandas dataframe (csv file) featuring the datapoints paths and its associated labels
+        - name: the name (without the .pth extension) of the model to load/save under the ``/weights/`` folder
+        - version: the version of the model to load
+            - To load the SSD300 architecture, choose ``version="300"``
+            - To load the SSD320 (MobileNet backbone) architecture, choose ``version="320"``
         """
 
+        if name:
+            self.name = name
+        else:
+            self.name = "default"
+
+        if version in ["300", "320", "512"]:
+            self.version = version
+        else:
+            raise ValueError("Invalid model version")
+
+        self.df = df
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        self.model: torch.nn.Module = None                   # Will be replaced by the loaded/created model
-        self.new_model: bool = False              # If a model is loaded from /weights/, new_model=False
-        self.label_encoder: dict[str] = None     # If a model is loaded from /weights/, label_encoder=...label_encoder.json
+        self.model = None                   # Will be replaced by the loaded/created model
+        self.new_model = False              # If a model is loaded from /weights/, new_model=False
+        self.label_encoder:dict = None      # If a model is loaded from /weights/, label_encoder=...label_encoder.json
 
-        self.version = version
-        if version == "300": 
-            super().__init__(model_metadata=SSD300_VGG16_Weights.DEFAULT, model_name="SSD300", weights_path=weights_path, model_mapping=ssd300_vgg16)
-        elif version == "320": 
-            super().__init__(model_metadata=SSDLite320_MobileNet_V3_Large_Weights.DEFAULT, model_name="SSD320", weights_path=weights_path, model_mapping=ssdlite320_mobilenet_v3_large)
-        else:
-            print(f"CNNDetectionSSD >> Invalid model version '{self.version}', model '300' will be used instead.")
-            self.version = "300"
-            super().__init__(model_metadata=SSD300_VGG16_Weights.DEFAULT, model_name="SSD300", weights_path=weights_path, model_mapping=ssd300_vgg16)
-
-        return None
-
-
-    def load_model(self, epoch: int = -1):
+    def load_model(self):
         """
         Loads the model from its weights. If the model or version doesn't exist, default weights are 
         loaded instead. If the local weights are not available, they are downloaded from PyTorch hub.
         """
-        
-        def load_epoch(epoch=epoch):
-            self.model = self.state_dict[epoch]["model"]
-            self.optimizer = self.state_dict[epoch]["optimizer"]
-            self.label_encoder = self.state_dict[epoch]["label_encoder"]
-            self.loss_checkpoint = self.state_dict[epoch]["loss_checkpoint"]
-            print(f"CNNDetectionSSD >> Model '{self.model_name}' loaded at epoch: {last_epoch}")
-            return None
-        
-        self.state_dict = torch.load(os.path.join(self.model_folder, f"{self.model_name}.pth"), weights_only=False)
 
-        last_epoch = max(list((self.state_dict.keys())))
-        if epoch == -1:
-            try:
-                load_epoch(epoch=last_epoch)
-            except:
-                print(f"CNNDetectionSSD >> Failed to load the most recent epoch: {last_epoch}")
-                raise ValueError(f"CNNDetectionSSD >> Error loading model '{self.model_name}'.")
+        if os.path.exists(os.path.join(WEIGHTS_WORKING_PATH, f"SSD{self.version}_{self.name}_label_encoder.json")):
+            # Tries to retreive the existing dictionnary, otherwise self.sample_batch() will generate a new one
+            with open(os.path.join(WEIGHTS_WORKING_PATH, f"SSD{self.version}_{self.name}_label_encoder.json"), "r") as json_file:
+                self.label_encoder = json.load(json_file)
+                self.num_classes = len(self.label_encoder) + 1
+        else:
+            self.label_encoder = None
+            self.num_classes = None
+        print("DetectionSSD >> Encoded labels:", self.label_encoder, "\nDetectionSSD >> Number of classes:", self.num_classes)
 
-        elif epoch != -1:
-            try:
-                load_epoch(epoch=epoch)
-            except:
-                try: 
-                    print(f"CNNDetectionSSD >> Failed to load model '{self.model_name}' at epoch {epoch}, trying to load at lastest epoch instead.")
-                    load_epoch(epoch=last_epoch)
-                except:
-                    print(f"CNNDetectionSSD >> Failed to load the most recent epoch: {last_epoch}")
-                    raise ValueError(f"CNNDetectionSSD >> Error loading model '{self.model_name}'.")
-            
+        if os.path.exists(os.path.join(WEIGHTS_WORKING_PATH, f"SSD{self.version}_{self.name}.pth")):
+            # If the custom weights exist, they are loaded
+            self.model = torch.load(os.path.join(WEIGHTS_WORKING_PATH, f"SSD{self.version}_{self.name}.pth"))
+            print("DetectionSSD >> Custom weights loaded:", f"SSD{self.version}_{self.name}.pth")
+
+        else:
+            if os.path.exists(os.path.join(WEIGHTS_LEGACY_PATH, f"SSD{self.version}.pth")):
+                # If the custom wieghts do not exist, the local default pretrained version is loaded
+                if self.version == "300":
+                    self.model = models.detection.ssd300_vgg16()
+                    self.model.load_state_dict(torch.load(os.path.join(WEIGHTS_LEGACY_PATH, "SSD300.pth")))
+                elif self.version == "320":
+                    self.model = models.detection.ssdlite320_mobilenet_v3_large()
+                else:
+                    self.model = models.detection.ssd300_vgg16()
+                    self.model.load_state_dict(torch.load(os.path.join(WEIGHTS_LEGACY_PATH, "SSD300.pth")))
+
+                print("DetectionSSD >> Default weights loaded:", f"SSD{self.version}.pth")
+
+            else:
+                # If the local default version doesn't exist, it is downloaded from PyTorch hub
+                if self.version == "300":
+                    self.model = models.detection.ssd300_vgg16(weights=models.detection.SSD300_VGG16_Weights.DEFAULT)
+                    torch.save(self.model.state_dict(), os.path.join(WEIGHTS_LEGACY_PATH, "SSD300.pth"))
+                elif self.version == "320":
+                    self.model = models.detection.ssdlite320_mobilenet_v3_large()
+                else:
+                    self.version = "300"
+                    self.model = models.detection.ssd300_vgg16(weights=models.detection.SSD300_VGG16_Weights.DEFAULT)
+                    torch.save(self.model.state_dict(), os.path.join(WEIGHTS_LEGACY_PATH, "SSD300.pth"))
+
+                print("DetectionSSD >> Default legacy weights dowloaded from: PyTorch hub")
             self.new_model = True
 
         self.model.to(self.device)
-
         return self.model
     
 
-    def load_data(self, 
-                  datapoints_path: list[str],
-                  labels_paths = [str],
-                  data_transform="default", 
-                  target_transform="default", 
-                  test_size=0.25, 
-                  label_encoder: dict[str] = None,
-                  **kwargs):
+    def sample_batch(self, data_transform="default", target_transform="default", test_size=0.25, **kwargs):
         """
         Querries the datapoints paths and labels from the dataframe. Relevant labels are
         automatically infered from the model in use and dataframe structure.
@@ -174,14 +179,32 @@ class CNNDetectionSSD(CNN):
             self.data_transform = data_transform
             self.target_transform = target_transform
 
-        sampler = Sampler()
+        sampler = Sampler(df=self.df, device=self.device)
 
-        # labels_list = [array[:, -5:] for array in labels_list] # [..., x_min, y_min, x_max, y_max, class_txt]
+        # Sampler outputs the datapoint path, as well as the corresponding labels rows from the DB
+        # In the context of SSD, i.e. object detection, the output is as follows:
+        # labels_list = [(datapoint_key, class_int, x_min, y_min, x_max, y_max, class_txt), ...]
+        datapoints_list, labels_list, unique_txt_classes = sampler.load_from_df(labels_type="Image_detection")
+
+        # The labels are a list of tuples, where each tuple represents a box and its label
+        # So it has to be regrouped as a list of subarrays, where one array represents all
+        # the boxes shown on an image, i.e of shape [N, 4]
+        # The SSD input is thus a list of [{boxes:[N, 4], labels:[N,]}, ...]
+        # labels_list = np.array(labels_list, dtype=object)
+        
+        # If a label_encoder wasn't loaded, a new one is created
+        if not self.label_encoder:
+            self.label_encoder = {}
+            for idx, class_txt in enumerate(unique_txt_classes):
+                self.label_encoder[class_txt] = idx
+            self.num_classes = len(self.label_encoder) + 1
+
+        labels_list = [array[:, -5:] for array in labels_list] # [..., x_min, y_min, x_max, y_max, class_txt]
 
 
         # The Sampler objects are overwritten with the list of dictionnaries
-        sampler.split_in_two(datapoints_list=datapoints_path, labels_list=labels_paths, test_size=test_size)
-        self.train_dataloader, self.test_dataloader = self.send_to_dataloader(dataset=SSDDataset, 
+        sampler.split_in_two(datapoints_list=datapoints_list, labels_list=labels_list, test_size=test_size)
+        self.train_dataloader, self.test_dataloader = sampler.send_to_dataloader(dataset=SSDDataset, 
                                                                                  data_transform=self.data_transform, target_transform=self.target_transform, 
                                                                                  **kwargs)
 
@@ -399,31 +422,28 @@ class CNNDetectionSSD(CNN):
         self.model.eval()
         return self.model(datapoint)
     
-    def save_model(self, model, optimizer_state, epoch = 0, loss_history = ..., loss_checkpoints = None, label_encoder = ..., **kwargs):
-        return super().save_model(model, optimizer_state, epoch, loss_history, loss_checkpoints, label_encoder, **kwargs)
+    def save_model(self, name:str=None):
+        """
+        Saves both current model and its weights into the /weights/ folder.
+        Automatically called at the end of a training session.
 
-    # def save_model(self, name:str=None):
-    #     """
-    #     Saves both current model and its weights into the /weights/ folder.
-    #     Automatically called at the end of a training session.
+        If no name is specified, the previous weights will be replaced by the newly computed ones.
+        If this is a new model, a default weights file will be created (might delete a previously unamed model).
 
-    #     If no name is specified, the previous weights will be replaced by the newly computed ones.
-    #     If this is a new model, a default weights file will be created (might delete a previously unamed model).
+        Parameters
+        ----------
+        name: the name to save the models' weights with. Extension (.pth) should not be mentionned. 
+        """
+        self._assert_model()
 
-    #     Parameters
-    #     ----------
-    #     name: the name to save the models' weights with. Extension (.pth) should not be mentionned. 
-    #     """
-    #     self._assert_model()
+        if name:
+            self.name = name
 
-    #     if name:
-    #         self.name = name
+        torch.save(self.model, os.path.join(WEIGHTS_WORKING_PATH, f"SSD{self.version}_{self.name}.pth"))
+        with open(os.path.join(WEIGHTS_WORKING_PATH, f"SSD{self.version}_{self.name}_LabelEncoder.json"), "w") as json_file:
+            json.dump(self.label_encoder, json_file)
 
-    #     torch.save(self.model, os.path.join(WEIGHTS_WORKING_PATH, f"SSD{self.version}_{self.name}.pth"))
-    #     with open(os.path.join(WEIGHTS_WORKING_PATH, f"SSD{self.version}_{self.name}_LabelEncoder.json"), "w") as json_file:
-    #         json.dump(self.label_encoder, json_file)
-
-    #     return None
+        return None
 
 
     def _assert_model(self):

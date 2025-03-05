@@ -9,24 +9,14 @@ from datetime import datetime
 import json
 from PIL import Image
 import shutil
-import multiprocessing as mp
-import requests
-import torch.utils
-import torch.utils.model_zoo
-import torchvision
-from torch.utils.model_zoo import load_url
-from torch.utils.data import Dataset, DataLoader
+
+from .samplers.sampler import Sampler
 
 class CNN(ABC):
     """
     Base CNN class
     """
-    def __init__(self, 
-                 model_metadata: dict | torchvision.models.Weights | torchvision.models.WeightsEnum, 
-                 model_name: str,
-                 model_mapping,
-                 # model_mapping: function,
-                 weights_path: str = None) -> None:
+    def __init__(self, model_name: str, weights_path: str = None) -> None:
         """
         Inits a CNN base class, and loads it from a local checkpoint or from PyTorch Hub using 
         the Torchvision API.
@@ -46,18 +36,10 @@ class CNN(ABC):
         super().__init__()
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        
-        try:
-            mp.set_start_method('spawn')
-        except:
-            None
 
-        self.model_metadata = model_metadata
         self.model_name = model_name
-        self.model_mapping = model_mapping
-
         if weights_path is None: weights_path = os.getcwd()
-        self.model_folder = os.path.join(weights_path, self.model_name)
+        self.model_folder = os.path.join(weights_path, model_name.split(sep='/')[-1])
 
         if not os.path.exists(self.model_folder):
             self._init_model()
@@ -70,26 +52,10 @@ class CNN(ABC):
         Initializes a model locally by creating a recipient weights folder.
         """
 
-        # def snapshot_download():
-        #     # Saves the pretrained weights
-        #     torch.hub.load_state_dict_from_url(url=self.model_metadata.url, model_dir=self.model_folder, progress=True, file_name=f"{self.model_name}.pth")
-        #     # Saves the corresponding label mapping
-        #     with open(os.path.join(self.model_folder, f"{self.model_name}.json"), "w") as json_file:
-        #         json.dump({i: name for i, name in enumerate(self.model_metadata.meta["categories"])}, json_file, indent=4)
-        
-        # print(f"CNN >> Downloading a new weight snapshot...")
-        # try:
-        #     snapshot_download()
-        #     print(f"CNN >> Model snapshot saved under: {self.model_folder}")
-        # except Exception as e:
-        #     print(f"CNN >> Failed to download a snapshot of the model weights: {e}")
+        os.mkdir(path=self.model_folder)
+        self._add_gitignore(folder_path=self.model_folder)
 
-        os.makedirs(self.model_folder, exist_ok=True)
-        self.model = self.model_mapping(weights=self.model_metadata)
-        self.save_model(optimizer_state={}, model=self.model, label_encoder={i: name for i, name in enumerate(self.model_metadata.meta["categories"])})
-
-        return None
-
+        return True
 
     def _repair_model(self):
         """
@@ -144,6 +110,10 @@ class CNN(ABC):
         pass
 
     @abstractmethod
+    def sample_batch(self, sampler: Sampler, batch_name: str, test_size: float = 0.25):
+        pass
+
+    @abstractmethod
     def train_model(self):
         pass
 
@@ -156,14 +126,13 @@ class CNN(ABC):
         pass
 
     @abstractmethod
-    def save_model(self, 
-                   model: torch.nn.Module, 
-                   optimizer_state: dict, 
-                   epoch: int = 0,
-                   loss_history: list[float] = [], 
-                   loss_checkpoints: float = None, 
-                   label_encoder: dict[str] = {},
-                   **kwargs):
+    def save_model(self):
+        pass
+
+
+    def save_model(self, optimizer_state:dict, model:torch.nn.Module, epoch: int = 0,
+                   loss_history:list[float]=[], loss_checkpoints:float=None, 
+                   name:str=None, **kwargs):
         """
         Saves the current model and its weights to the /weights/ folder.
         Automatically called at the end of a training session.
@@ -180,75 +149,28 @@ class CNN(ABC):
         current_state = {
             "model": model,
             "optimizer": optimizer_state,
-            "label_encoder": label_encoder,
             "loss_history": loss_history,
             "loss_checkpoint": loss_checkpoints,
             "date": datetime.now().strftime("%Y/%m/%d:%Hh%Mm%Ss")
         }
+        # last_epoch = sorted(int(epoch) for epoch in list(self.state_dict.keys()))[-1] # Last model was saved at epoch last_epoch
+        # self.state_dict[f"{last_epoch+epoch}"] = current_state
+        self.state_dict[self.current_epoch+epoch] = current_state
 
-        # If the model is a new snapshot, creates the self.state_dict object at epoch 0
-        try:
-            self.state_dict[self.current_epoch+epoch] = current_state
-        except:
-            self.state_dict = {0: current_state}
+        if name:
+            self.name = name
 
-        torch.save(self.state_dict, os.path.join(self.model_folder, f"{self.model_name}.pth"))
-
+        if "legacy_name" in kwargs:
+            # Hidden save method to save the pretrained models locally
+            torch.save(self.state_dict, os.path.join(self.model_folder, f"{kwargs['legacy_name']}.pth"))
+            self.model = model
+        else:
+            # Default behaving save method
+            torch.save(self.state_dict, os.path.join(self.model_folder, f"ResNet{self.version}_{self.name}.pth"))
+            with open(os.path.join(self.model_folder, f"ResNet{self.version}_{self.name}_LabelEncoder.json"), "w") as json_file:
+                json.dump(self.label_encoder, json_file)
 
         return None
-
-
-    def send_to_dataloader(self, 
-                           dataset:Dataset, 
-                           data_transform=None, 
-                           target_transform=None,
-                           chunks: int = 1, 
-                           batch_size: int = None, 
-                           num_workers: int = 0, 
-                           drop_last: bool = True,
-                           shuffle: bool = True):
-        """
-        Returns a training and testing dataloaders objects from the sampled ``datapoints_list`` and ``labels_list``.
-
-        Args
-        ----
-        - dataset: a torch Dataset subclass that is compatible with the performed task (a forciori the loaded model)
-        - transform: a short datapoints preprocessing pipeline, that should be model specific 
-        (such as resizing an image input, or vectorizing a word...) and data specific (normalizing...)
-        - chunks: the number of batch to divide the dataset into
-        """
-
-        # Custom datasets
-        self.train_dataset = dataset(datapoints_list=self.X_train, labels_list=self.Y_train, 
-                                     data_transform=data_transform, target_transform=target_transform)
-        self.test_dataset = dataset(datapoints_list=self.X_test, labels_list=self.Y_test,
-                                     data_transform=data_transform, target_transform=target_transform)
-        
-        # The batch_size parameter has priority over the number of chunks 
-        if chunks and not batch_size:
-            train_batch_size = self.train_dataset.__len__()//chunks
-            test_batch_size = self.test_dataset.__len__()//chunks
-        else:
-            train_batch_size = batch_size
-            test_batch_size = batch_size
-
-        # Dataloader required for the training loop
-        if self.train_dataset: 
-            self.train_dataloader = DataLoader(self.train_dataset, 
-                                            batch_size=train_batch_size, 
-                                            shuffle=shuffle, drop_last=drop_last, 
-                                            collate_fn=self.train_dataset._collate_fn,
-                                            num_workers=num_workers)
-        else: # Training is empty to avoid errors
-            self.train_dataloader = []
-        # Dataloader required for the testing loop
-        self.test_dataloader = DataLoader(self.test_dataset, 
-                                          batch_size=test_batch_size,
-                                          shuffle=shuffle, drop_last=False, 
-                                          collate_fn=self.train_dataset._collate_fn,
-                                          num_workers=num_workers)
-
-        return self.train_dataloader, self.test_dataloader
     
 
     def edit_optimizer(self, **kwargs):

@@ -15,16 +15,13 @@ import cv2
 import json
 
 
-PRELABELLING_DIR_PATH = os.path.dirname(os.path.dirname(__file__))
+SERVER_DIR_PATH = os.path.abspath(__file__).split("services")[0]
 if __name__ == "__main__":
-    sys.path.append(os.path.dirname(PRELABELLING_DIR_PATH))
+    sys.path.append(SERVER_DIR_PATH)
 
-from database.scripts.connection import Connection
-from database.scripts.requestdata import RequestData
-from aws.scripts.s3datahive import S3DataHive
-
-from prelabelling.models.torchvision.datasets.resnetdataset import ResnetDataset
-from prelabelling.samplers.sampler import Sampler
+from services.database.src.scripts.requestdata import RequestData
+from services.aws.src.scripts.s3datahive import S3DataHive
+from services.prelabelling.src.samplers.sampler import Sampler
 from main import CONNECTION
 
 class BaseSampler(Sampler):
@@ -42,8 +39,8 @@ class BaseSampler(Sampler):
         This base sampler handles all the pipelines step without using any data selection 
         strategy, but keeping every datapoint that is already labellized.
 
-        Parameters
-        ----------
+        Args
+        ----
         - batch_name: the name of the batch to sample data from
         - task_name: the name of the task to sample labels from. The batch must support this task, otherwise
         the sampling won't be executed
@@ -67,8 +64,8 @@ class BaseSampler(Sampler):
         The strategy to apply.
         The BaseSampler applies a base strategy, that keeps as many training examples as possible.
 
-        Parameters
-        ----------
+        Args
+        ----
         - df: the df to read datapoints from
 
         Returns
@@ -83,7 +80,7 @@ class BaseSampler(Sampler):
         
         print("BaseSampler >> Applying strategy") # Base strategy does nothing
 
-        self.df.to_csv(os.path.join(os.path.dirname(PRELABELLING_DIR_PATH), "temp", "df_datapoints.csv"), index=False)
+        self.df.to_csv(os.path.join(SERVER_DIR_PATH, "temp", "df_datapoints.csv"), index=False)
 
         return self.datapoints_from_labels(df=self.df)
 

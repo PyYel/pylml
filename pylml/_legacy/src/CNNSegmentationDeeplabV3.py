@@ -33,6 +33,7 @@ except:
     None
 
 from .CNN import CNN
+from .samplers.sampler import Sampler
 from .datasets.deeplabdataset import DeeplabV3Dataset
 
 class CNNSegmentationDeeplabV3(CNN):

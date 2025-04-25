@@ -3,17 +3,18 @@ import os, sys
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, pipeline
 from accelerate import init_empty_weights
+import re
 
 from .LLM import LLM
 
 
 class LLMSafetyClassificationLlama3(LLM):
     """
-    A collection of pretrained models based on the Meta's Llama3 backbone, fine-tuned for text generation.
+    A collection of pretrained models based on the Meta's Llama3 backbone, for chat content analysis and enforcement.
     """
-    def __init__(self, weights_path: str = None, version: str = "1B") -> None:
+    def __init__(self, weights_path: str = None, version: str = "system") -> None:
         """
-        Initializes a pretrained model based on the Meta's Llama3 backbone, fine-tuned for text generation.
+        Initializes a pretrained model based on the Meta's Llama3 backbone, fine-tuned for content analysis and enforcement.
 
         Parameters
         ----------
@@ -23,28 +24,27 @@ class LLMSafetyClassificationLlama3(LLM):
 
         Versions
         --------
-        - ``'1B'`` _(default)_ : The smallest 1 billion parameters version of Llama 3.2. 
-            - Initializes the model with ``'meta-llama/Llama-3.2-1B-Instruct'`` weights for text generation.
-            - For the full bfloat16 model, requires 2.5Go of RAM/VRAM. 
-        
+        - ``'system'`` _(default)_ : A tiny 86M parameters model that prevents prompts from overriding system instructions. 
+            - Initializes the model with ``'meta-llama/Prompt-Guard-86M'`` weights for prompt binary classification.
+            - For the full float32 model, requires ?Go of RAM/VRAM. 
+        - ``'chats'``: A large 8B parameters model classifying unsafe chats. 
+            - Initializes the model with ``'meta-llama/Llama-Guard-3-8B'`` weights for text generation.
+            - For the full bfloat16 model, requires ?Go of RAM/VRAM. 
+            
         Note
         ----
         - Quantization may be supported. See ``load_model()``.
         """
 
         self.version = version
-        if version == "1B": 
-            super().__init__(model_name="meta-llama/Llama-3.2-1B-Instruct", weights_path=weights_path)
-        elif version == "3B": 
-            super().__init__(model_name="meta-llama/Llama-3.2-3B-Instruct", weights_path=weights_path)
-        elif version == "8B": 
-            super().__init__(model_name="meta-llama/Llama-3.2-1B-Instruct", weights_path=weights_path)
-        elif version == "Guard-8B": 
-            super().__init__(model_name="meta-llama/Llama-3.2-1B-Instruct", weights_path=weights_path)
+        if version == "system": 
+            super().__init__(model_name="meta-llama/Prompt-Guard-86M", weights_path=weights_path)
+        elif version == "chats": 
+            super().__init__(model_name="meta-llama/Llama-Guard-3-8B", weights_path=weights_path)
         else:
-            print("LLMSafetyClassificationLlama3 >> Warning: Invalid model version, model '1B' will be used instead.")
-            self.version = "1B"
-            super().__init__(model_name="meta-llama/Llama-3.2-1B-Instruct", weights_path=weights_path)
+            print("LLMSafetyClassificationLlama3 >> Warning: Invalid model version, model '86M' will be used instead.")
+            self.version = "system"
+            super().__init__(model_name="meta-llama/Prompt-Guard-86M", weights_path=weights_path)
 
         return None
 
@@ -185,5 +185,34 @@ class LLMSafetyClassificationLlama3(LLM):
         return messages
     
     def _postprocess(self, results: list[str], messages: list[str]):
-        return [result[0]['generated_text'][len(message):] for result, message in zip(results, messages)]
+
+        s_code_map = {
+            "S1": "Violent Crimes",
+            "S2": "Non-Violent Crimes",
+            "S3": "Sex-Related Crimes",
+            "S4": "Child Sexual Exploitation",
+            "S5": "Defamation",
+            "S6": "Specialized Advice",
+            "S7": "Privacy",
+            "S8": "Intellectual Property",
+            "S9": "Indiscriminate Weapons",
+            "S10": "Hate",
+            "S11": "Suicide & Self-Harm",
+            "S12": "Sexual Content",
+            "S13": "Elections",
+            "S14": "Code Interpreter Abuse"
+        }
+
+        if self.version == "86M":
+            outputs = [ 
+                {"S0": "Safe"} if result == "safe" else {"S14": "System Abuse"}
+                for result in results
+            ]
+        else:
+            outputs = [
+                {"S0": "Safe"} if result == "safe" else {code: s_code_map.get(code, "Unknown violation")
+                for code in re.findall(r'\b(S\d{1,2})\b', result)}for result in results
+            ]
+
+        return outputs
 

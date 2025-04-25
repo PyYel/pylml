@@ -1,15 +1,15 @@
 
 import os, sys
 
-MAIN_DIR_PATH = os.path.dirname((os.path.dirname(__file__)))
+MAIN_DIR = os.path.dirname((os.path.dirname(__file__)))
 if __name__ == "__main__":
-    sys.path.append(MAIN_DIR_PATH)
+    sys.path.append(MAIN_DIR)
 
 
 from pylml import login
 from pylml.LLM import LLMSafetyClassificationLlama3
 
-login(dotenv_path=os.path.join(MAIN_DIR_PATH, ".env"))
+login(dotenv_path=os.path.join(MAIN_DIR, ".env"))
 
 model = LLMSafetyClassificationLlama3(weights_path=os.path.dirname(__file__))
 model.load_model()

@@ -26,7 +26,13 @@ class LLMInstructGenerationLlama3(LLM):
         - ``'1B'`` _(default)_ : The smallest 1 billion parameters version of Llama 3.2. 
             - Initializes the model with ``'meta-llama/Llama-3.2-1B-Instruct'`` weights for text generation.
             - For the full bfloat16 model, requires 2.5Go of RAM/VRAM. 
-        
+        - ``'3B'``: The 3 billion parameters version of Llama 3.2. 
+            - Initializes the model with ``'meta-llama/Llama-3.2-3B-Instruct'`` weights for text generation.
+            - For the full bfloat16 model, requires ?Go of RAM/VRAM. 
+        - ``'8B'``: The 8 billion parameters version of Llama 3.1. 
+            - Initializes the model with ``'meta-llama/Llama-3.1-8B-Instruct'`` weights for text generation.
+            - For the full bfloat16 model, requires ?Go of RAM/VRAM. 
+
         Note
         ----
         - Quantization may be supported. See ``load_model()``.
@@ -38,9 +44,7 @@ class LLMInstructGenerationLlama3(LLM):
         elif version == "3B": 
             super().__init__(model_name="meta-llama/Llama-3.2-3B-Instruct", weights_path=weights_path)
         elif version == "8B": 
-            super().__init__(model_name="meta-llama/Llama-3.2-1B-Instruct", weights_path=weights_path)
-        elif version == "Guard-8B": 
-            super().__init__(model_name="meta-llama/Llama-3.2-1B-Instruct", weights_path=weights_path)
+            super().__init__(model_name="meta-llama/Llama-3.1-8B-Instruct", weights_path=weights_path)
         else:
             print("LLMInstructGenerationLlama3 >> Warning: Invalid model version, model '1B' will be used instead.")
             self.version = "1B"

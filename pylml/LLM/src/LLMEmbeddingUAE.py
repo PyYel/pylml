@@ -5,7 +5,7 @@ from transformers import AutoModel, AutoTokenizer, pipeline
 from accelerate import init_empty_weights
 import numpy as np
 
-from llm import LLM
+from .LLM import LLM
 
 
 class LLMEmbeddingUAE(LLM):

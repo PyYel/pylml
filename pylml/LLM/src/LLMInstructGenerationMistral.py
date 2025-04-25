@@ -7,14 +7,14 @@ from accelerate import init_empty_weights
 from .LLM import LLM
 
 
-class LLMTextGenerationPhi(LLM):
+class LLMInstructGenerationMistral(LLM):
     """
-    A collection of pretrained models based on the Microsoft's Phi 3.5 backbone, fine-tuned for text generation.
+    A collection of pretrained models based on MistralAI's backbones, fine-tuned for text generation.
     """
-    def __init__(self, weights_path: str = None, version: str = "mini") -> None:
+    def __init__(self, weights_path: str = None, version: str = "7b") -> None:
         """
-        Initializes a pretrained model based on the Microsoft's Phi 3.5 backbone, fine-tuned for text generation.
-
+        Initializes a pretrained model based on MistralAI's backbones, fine-tuned for text generation.
+        
         Parameters
         ----------
         weights_path: str, None
@@ -23,30 +23,23 @@ class LLMTextGenerationPhi(LLM):
 
         Versions
         --------
-        - ``'mini'`` _(default)_ : The smallest 3.8 billion parameters version of Phi 3.5. 
-            - Initializes the model with ``'microsoft/Phi-3.5-mini-instruct'`` weights for text generation.
-            - For the full bfloat16 model, requires 7.7Go of RAM/VRAM. 
-        
-        - ``'moe'``: The Mixture of Experts (MoE) 42 billion parameters version of Phi 3.5. 
-            - Initializes the model with ``'microsoft/Phi-3.5-moe'`` weights for text generation.
-            - The MoE design results in only 6.6 bilion of active parameters.
-            - For the full bfloat16 model, requires 41.9Go of RAM/VRAM.
+        - ``'7b'`` _(default)_ : The 7 billion parameters v1.0 version of Mistral7b.
+            - Initializes the model with ``'mistralai/Mistral-7B-v0.1'`` weights for text generation.
+            - For the full float32 model, requires 28Go of RAM/VRAM.
 
         Note
         ----
         - Quantization may be supported. See ``load_model()``.
         """
 
-        self.version = version
-        if version == "mini": 
-            super().__init__(model_name="microsoft/Phi-3.5-mini-instruct", weights_path=weights_path)
-        elif version == "moe": 
-            super().__init__(model_name="microsoft/Phi-3.5-MoE-instruct", weights_path=weights_path)
+        self.verison = version
+        if version == "7b": 
+            super().__init__(model_name="mistralai/Mistral-7B-v0.1", weights_path=weights_path)
         else:
-            print("LLMTextGenerationPhi >> Warning: Invalid model version, model 'mini' will be used instead.")
-            self.version = "mini"
-            super().__init__(model_name="microsoft/Phi-3.5-mini-instruct", weights_path=weights_path)
-
+            print("LLMInstructGenerationMistral >> Warning: Invalid model version, model '7b' will be used instead.")
+            self.version = "7b"
+            super().__init__(model_name="mistralai/Mistral-7B-v0.1", weights_path=weights_path)
+        
         return None
 
 
@@ -71,26 +64,23 @@ class LLMTextGenerationPhi(LLM):
             - Quantization in 4-bits requires roughly TODO of VRAM
         """
         
-        if quantization in ["8b", "4b"] and torch.cuda.is_available():
+        dtype_correction = 1.0
+        if quantization in ["8b", "4b"] and self.device != "cpu":
             if quantization == "8b":
                 load_in_8bit = True
                 load_in_4bit = False
-                dtype_correction = 2.0
             if quantization == "4b":
                 load_in_8bit = False
                 load_in_4bit = True
-                dtype_correction = 4.0
             quantization_config = BitsAndBytesConfig(
                 load_in_8bit=load_in_8bit,
-                load_in_4bit=load_in_4bit, 
+                load_in_4bit=load_in_4bit,  
                 llm_int8_threshold=6.0,
-                llm_int8_enable_fp32_cpu_offload=True,)
-                # bnb_4bit_compute_dtype=torch.bfloat16)
-            low_cpu_mem_usage = True
+                llm_int8_enable_fp32_cpu_offload=True,
+                bnb_4bit_compute_dtype=torch.bfloat16
+            )
         else:
-            low_cpu_mem_usage = None
             quantization_config = None
-            dtype_correction = 2.0
         
         with init_empty_weights(include_buffers=True):
             empty_model = AutoModelForCausalLM.from_pretrained(self.model_folder, quantization_config=quantization_config)
@@ -100,16 +90,14 @@ class LLMTextGenerationPhi(LLM):
         self.model = AutoModelForCausalLM.from_pretrained(self.model_folder, 
                                                           trust_remote_code=True, 
                                                           quantization_config=quantization_config, 
-                                                          low_cpu_mem_usage=low_cpu_mem_usage,
-                                                          device_map=self.device_map,
-                                                        #   attn_implementation="flash_attention_2",
-                                                          torch_dtype=torch.bfloat16)
+                                                          device_map=self.device_map)
+        
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_folder, 
                                                        clean_up_tokenization_spaces=True)
+        
         self.pipe = pipeline("text-generation",
                              model=self.model,
                              tokenizer=self.tokenizer,
-                             torch_dtype=torch.bfloat16,
                              device_map=self.device_map)
                 
         return None
@@ -123,36 +111,30 @@ class LLMTextGenerationPhi(LLM):
         ----------
         prompt: str
             The model querry.
-        context: str
+        context: str, ''
             Enhances a prompt by concatenating a string content beforehand. Default is '', adding the context
             is equivalent to enhancing the prompt input directly.
-        display: bool
-            Whereas printing the model answer or not. Default is 'True'.
+        display: bool, False
+            Whereas printing the model answer or not. Default is 'False'.
 
         Returns
         -------
         output: str
-            The model's response to the input.
-
-        Example
-        -------
-        >>> prompt = "Synthesize this conversation"
-        >>> context = f'{conversation}'
-        # The model input will be formatted as:
-        >>> model_input = context + prompt
+            The model response.
         """
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
 
-        generation_args = {
-            "max_new_tokens": max_tokens,
-            "return_full_text": False,
-            "temperature": 0.1,
-            "do_sample": True,
-            # "stream":True
-        }
+        # Generate text
+        print("LLMMistral7b >> Evaluating prompt.")
+        output = self.model.generate(**inputs, max_length=max_tokens)
 
-        message = context + '\n' + prompt
-        output: str = self.pipe(message, **generation_args)[0]["generated_text"]
-        if display: print(output)
-        
-        return output
+        # Decode and print the generated text
+        print("LLMMistral7b >> Decoding prompt.")
+        generated_text = self.tokenizer.decode(output[0], skip_special_tokens=True)
+
+        if display:
+            print("LLMMistral7b >> Prompt was:", prompt)
+            print("LLMMistral7b >> Answer is:", generated_text[len(prompt)+1:])
+
+        return generated_text[len(prompt)+1:]
 

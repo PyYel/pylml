@@ -7,7 +7,7 @@ from accelerate import init_empty_weights
 from .LLM import LLM
 
 
-class LLMTextSummarizationT5(LLM):
+class LLMSummarizationT5(LLM):
     """
     A collection of pretrained models based on the Google's T5 backbone, fine-tuned for text summarization.
     """
@@ -55,7 +55,7 @@ class LLMTextSummarizationT5(LLM):
         elif version == "falconsai": 
             super().__init__(model_name="Falconsai/text_summarization", weights_path=weights_path)
         else:
-            print("LLMTextSummarizationT5 >> Warning: Invalid model version, model 'small' will be used instead.")
+            print("LLMSummarizationT5 >> Warning: Invalid model version, model 'small' will be used instead.")
             self.version = "base"
             super().__init__(model_name="google-t5/t5-small0", weights_path=weights_path)
 
@@ -130,7 +130,7 @@ class LLMTextSummarizationT5(LLM):
 
         if isinstance(prompts, str): prompts = [prompts]
         if not isinstance(prompts, list): 
-            print(f"LLMTextSummarizationT5 >> Error: Model's input should be of type 'list[str]', got '{type(prompts)}' instead.")
+            print(f"LLMSummarizationT5 >> Error: Model's input should be of type 'list[str]', got '{type(prompts)}' instead.")
 
         return prompts
 

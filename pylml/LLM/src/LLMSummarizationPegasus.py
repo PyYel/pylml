@@ -7,13 +7,13 @@ from accelerate import init_empty_weights
 from .LLM import LLM
 
 
-class LLMTextSummarizationBART(LLM):
+class LLMSummarizationPegasus(LLM):
     """
-    A collection of pretrained models based on the Facebook AI Research's BART backbone, fine-tuned for text summarization.
+    A collection of pretrained models based on the Microsoft's DeBERTaV3 backbone, fine-tuned for zero-shot text classification.
     """
-    def __init__(self, weights_path: str = None, version: str = "large-cnn") -> None:
+    def __init__(self, weights_path: str = None, version: str = "base") -> None:
         """
-        Initializes a pretrained model based on the Facebook AI Research's BART backbone, fine-tuned for text summarization.
+        Initializes a pretrained model based on the Microsoft's DeBERTaV3 backbone, fine-tuned for zero-shot text classification.
 
         Parameters
         ----------
@@ -23,9 +23,18 @@ class LLMTextSummarizationBART(LLM):
 
         Versions
         --------
-        - ``'large-cnn'`` _(default)_ : The large 406 million parameters version of BART fine-tuned on the CNN Daily Mail dataset. 
-            - Initializes the model with ``'facebook/bart-large-cnn'`` weights for text summarization.
+        - ``'base'`` _(default)_ : The base 86 million parameters version of DeBERTaV3. 
+            - Initializes the model with ``'MoritzLaurer/deberta-v3-base-zeroshot-v2.0'`` weights for zero-shot classification.
             - For the full float32 model, requires 0.5Go of RAM/VRAM. 
+
+        - ``'large'``: The large 304 million parameters version of DeBERTaV3.
+            - Initializes the model with ``'MoritzLaurer/deberta-v3-large-zeroshot-v2.0'`` for zero-shot classification.
+            - For the full float32 model, requires 1Go of RAM/VRAM. 
+
+        - ``'xsum'``: The base 86 million parameters version of DeBERTaV3 fine-tuned over the MNLI dataset.
+            - Initializes the model with ``'MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli'`` for zero-shot classification.
+            - For the full float32 model, requires 0.5Go of RAM/VRAM. 
+            - This version is fine-tuned on the MNLI dataset.
 
         Note
         ----
@@ -34,12 +43,16 @@ class LLMTextSummarizationBART(LLM):
         """
 
         self.version = version
-        if version == "large-cnn": 
-            super().__init__(model_name="facebook/bart-large-cnn", weights_path=weights_path)
+        if version == "base": 
+            super().__init__(model_name="MoritzLaurer/deberta-v3-base-zeroshot-v2.0", weights_path=weights_path)
+        elif version == "large": 
+            super().__init__(model_name="MoritzLaurer/deberta-v3-large-zeroshot-v2.0", weights_path=weights_path)
+        elif version == "base-mnli": 
+            super().__init__(model_name="MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli", weights_path=weights_path)
         else:
-            print("LLMTextSummarizationBART >> Warning: Invalid model version, model 'large-cnn' will be used instead.")
-            self.version = "large-cnn"
-            super().__init__(model_name="facebook/bart-large-cnn", weights_path=weights_path)
+            print("LLMZeroShotClassificationDeBERTaV3 >> Warning: Invalid model version, model 'base' will be used instead.")
+            self.version = "base"
+            super().__init__(model_name="MoritzLaurer/deberta-v3-base-zeroshot-v2.0", weights_path=weights_path)
 
         return None
 
@@ -58,7 +71,7 @@ class LLMTextSummarizationBART(LLM):
         - Quantization is not available.
             - Reason: TODO
         """
-        
+
         with init_empty_weights(include_buffers=True):
             empty_model = AutoModelForSequenceClassification.from_pretrained(self.model_folder)
             self._device_map(model=empty_model, dtype_correction=1, display=display)
@@ -112,7 +125,7 @@ class LLMTextSummarizationBART(LLM):
 
         if isinstance(prompts, str): prompts = [prompts]
         if not isinstance(prompts, list): 
-            print(f"LLMTextSummarizationT5 >> Error: Model's input should be of type 'list[str]', got '{type(prompts)}' instead.")
+            print(f"LLMSummarizationT5 >> Error: Model's input should be of type 'list[str]', got '{type(prompts)}' instead.")
 
         return prompts
 

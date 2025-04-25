@@ -7,13 +7,13 @@ from accelerate import init_empty_weights
 from .LLM import LLM
 
 
-class LLMTextGenerationOPT(LLM):
+class LLMInstructGenerationPhi(LLM):
     """
-    A collection of pretrained models based on the Facebook AI Research's OPT backbone, fine-tuned for text generation.
+    A collection of pretrained models based on the Microsoft's Phi 3.5 backbone, fine-tuned for text generation.
     """
-    def __init__(self, weights_path: str = None, version: str = "125m") -> None:
+    def __init__(self, weights_path: str = None, version: str = "mini") -> None:
         """
-        Initializes a pretrained model based on the Facebook AI Research's OPT backbone, fine-tuned for text generation.
+        Initializes a pretrained model based on the Microsoft's Phi 3.5 backbone, fine-tuned for text generation.
 
         Parameters
         ----------
@@ -23,33 +23,14 @@ class LLMTextGenerationOPT(LLM):
 
         Versions
         --------
-        - ``'125m'`` _(default)_ : The smallest 125m parameters version among the OPTs models. 
-            - Initializes the model with ``'facebook/opt-125m'`` weights for text generation.
-            - For the full model, requires 1Go of RAM/VRAM. 
-
-        - ``'350m'``: The 350 million parameters version of the OPTs models. 
-            - Initializes the model with ``'facebook/opt-350m'`` weights for text generation.
-            - For the full model, requires X of RAM/VRAM. 
-
-        - ``'1.3b'``: The 1.3 billion parameters version of the OPTs models. 
-            - Initializes the model with ``'facebook/opt-1.3b'`` weights for text generation.
-            - For the full model, requires X of RAM/VRAM. 
-
-        - ``'2.7b'``: The 2.7 billion parameters version of the OPTs models. 
-            - Initializes the model with ``'facebook/opt-2.7b'`` weights for text generation.
-            - For the full model, requires X of RAM/VRAM. 
-
-        - ``'6.7b'``: The 6.7 billion parameters version of the OPTs models. 
-            - Initializes the model with ``'facebook/opt-6.7b'`` weights for text generation.
-            - For the full model, requires X of RAM/VRAM. 
-
-        - ``'13b'``: The 13 billion parameters version of the OPTs models. 
-            - Initializes the model with ``'facebook/opt-13b'`` weights for text generation.
-            - For the full model, requires X of RAM/VRAM. 
-
-        - ``'1.3b-iml'``: The Instruction Meta-Learning (IML) 1.3 billion parameters version of the OPTs models. 
-            - Initializes the model with ``'facebook/opt-iml-1.3b'`` weights for text generation.
-            - For the full model, requires X of RAM/VRAM. 
+        - ``'mini'`` _(default)_ : The smallest 3.8 billion parameters version of Phi 3.5. 
+            - Initializes the model with ``'microsoft/Phi-3.5-mini-instruct'`` weights for text generation.
+            - For the full bfloat16 model, requires 7.7Go of RAM/VRAM. 
+        
+        - ``'moe'``: The Mixture of Experts (MoE) 42 billion parameters version of Phi 3.5. 
+            - Initializes the model with ``'microsoft/Phi-3.5-moe'`` weights for text generation.
+            - The MoE design results in only 6.6 bilion of active parameters.
+            - For the full bfloat16 model, requires 41.9Go of RAM/VRAM.
 
         Note
         ----
@@ -57,25 +38,15 @@ class LLMTextGenerationOPT(LLM):
         """
 
         self.version = version
-        if version == "125m": 
-            super().__init__(model_name="facebook/opt-125m", weights_path=weights_path)
-        elif version == "350m": 
-            super().__init__(model_name="facebook/opt-350m", weights_path=weights_path)
-        elif version == "1.3b": 
-            super().__init__(model_name="facebook/opt-1.3b", weights_path=weights_path)
-        elif version == "2.7b": 
-            super().__init__(model_name="facebook/opt-2.7b", weights_path=weights_path)
-        elif version == "6.7b": 
-            super().__init__(model_name="facebook/opt-6.7b", weights_path=weights_path)
-        elif version == "13b": 
-            super().__init__(model_name="facebook/opt-13b", weights_path=weights_path)
-        elif version == "1.3b-iml": 
-            super().__init__(model_name="facebook/opt-iml-1.3b", weights_path=weights_path)
+        if version == "mini": 
+            super().__init__(model_name="microsoft/Phi-3.5-mini-instruct", weights_path=weights_path)
+        elif version == "moe": 
+            super().__init__(model_name="microsoft/Phi-3.5-MoE-instruct", weights_path=weights_path)
         else:
-            print("LLMTextGenerationOPT >> Warning: Invalid model version, model '125m' will be used instead.")
+            print("LLMInstructGenerationPhi >> Warning: Invalid model version, model 'mini' will be used instead.")
             self.version = "mini"
-            super().__init__(model_name="facebook/opt-125m", weights_path=weights_path)
-        
+            super().__init__(model_name="microsoft/Phi-3.5-mini-instruct", weights_path=weights_path)
+
         return None
 
 
@@ -100,23 +71,26 @@ class LLMTextGenerationOPT(LLM):
             - Quantization in 4-bits requires roughly TODO of VRAM
         """
         
-        dtype_correction = 1.0
-        if quantization in ["8b", "4b"] and self.device != "cpu":
+        if quantization in ["8b", "4b"] and torch.cuda.is_available():
             if quantization == "8b":
                 load_in_8bit = True
                 load_in_4bit = False
+                dtype_correction = 2.0
             if quantization == "4b":
                 load_in_8bit = False
                 load_in_4bit = True
+                dtype_correction = 4.0
             quantization_config = BitsAndBytesConfig(
                 load_in_8bit=load_in_8bit,
-                load_in_4bit=load_in_4bit,  
+                load_in_4bit=load_in_4bit, 
                 llm_int8_threshold=6.0,
-                llm_int8_enable_fp32_cpu_offload=True,
-                bnb_4bit_compute_dtype=torch.bfloat16
-            )
+                llm_int8_enable_fp32_cpu_offload=True,)
+                # bnb_4bit_compute_dtype=torch.bfloat16)
+            low_cpu_mem_usage = True
         else:
+            low_cpu_mem_usage = None
             quantization_config = None
+            dtype_correction = 2.0
         
         with init_empty_weights(include_buffers=True):
             empty_model = AutoModelForCausalLM.from_pretrained(self.model_folder, quantization_config=quantization_config)
@@ -126,14 +100,16 @@ class LLMTextGenerationOPT(LLM):
         self.model = AutoModelForCausalLM.from_pretrained(self.model_folder, 
                                                           trust_remote_code=True, 
                                                           quantization_config=quantization_config, 
-                                                          device_map=self.device_map)
-        
+                                                          low_cpu_mem_usage=low_cpu_mem_usage,
+                                                          device_map=self.device_map,
+                                                        #   attn_implementation="flash_attention_2",
+                                                          torch_dtype=torch.bfloat16)
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_folder, 
                                                        clean_up_tokenization_spaces=True)
-        
         self.pipe = pipeline("text-generation",
                              model=self.model,
                              tokenizer=self.tokenizer,
+                             torch_dtype=torch.bfloat16,
                              device_map=self.device_map)
                 
         return None
@@ -156,20 +132,26 @@ class LLMTextGenerationOPT(LLM):
         Returns
         -------
         output: str
-            The model response.
+            The model's response to the input.
+
+        Example
+        -------
+        >>> prompt = "Synthesize this conversation"
+        >>> context = f'{conversation}'
+        # The model input will be formatted as:
+        >>> model_input = context + prompt
         """
 
         generation_args = {
             "max_new_tokens": max_tokens,
             "return_full_text": False,
-            # "temperature": 0.0,
-            "do_sample": False,
+            "temperature": 0.1,
+            "do_sample": True,
             # "stream":True
         }
 
-        # Model enhanced prompting
-        messages = context + '\n' + prompt
-        output: str = self.pipe(messages, **generation_args)[0]["generated_text"]
+        message = context + '\n' + prompt
+        output: str = self.pipe(message, **generation_args)[0]["generated_text"]
         if display: print(output)
         
         return output

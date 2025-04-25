@@ -6,7 +6,7 @@ from accelerate import init_empty_weights
 import numpy as np
 import torch
 
-from llm import LLM
+from .LLM import LLM
 
 
 class LLMEmbeddingSentenceTransformer(LLM):

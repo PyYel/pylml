@@ -3,13 +3,13 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pyyel-mlops"
+name = "PyYel-MLOps"
 version = "0.1.3"
 description = "AI tools"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.6"
 authors = [
-    { name="Nayel BLIDI", email="nayel.blidi@gmail.com" }
+    { name="Maxime BLIDI", email="blidi.maxime@gmail.com" }
 ]
 dependencies = [
     "numpy<2",
@@ -30,7 +30,6 @@ dependencies = [
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 

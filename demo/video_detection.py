@@ -2,6 +2,13 @@
 import cv2
 import torch
 
+
+import os, sys
+
+MAIN_DIR = os.path.dirname((os.path.dirname(__file__)))
+if __name__ == "__main__":
+    sys.path.append(MAIN_DIR)
+
 from pylml.CNN import CNNDetectionSSD, CNNDetectionFasterRCNN
 
 coco_labels = {
@@ -33,6 +40,7 @@ def pyl_api_demo():
     # PyYel API init
     # api = CNNDetectionFasterRCNN(None, version="MobileNet320")
     api = CNNDetectionSSD(version="320")
+    api._repair_model()
 
     # Model (custom/pretrained) loading
     api.load_model()

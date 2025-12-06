@@ -3,7 +3,7 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "PyYel-MLOps"
+name = "pylml"
 version = "0.1.3"
 description = "AI tools"
 readme = "README.md"
@@ -11,6 +11,7 @@ requires-python = ">=3.6"
 authors = [
     { name="Maxime BLIDI", email="blidi.maxime@gmail.com" }
 ]
+
 dependencies = [
     "numpy<2",
     "pandas",
@@ -19,15 +20,31 @@ dependencies = [
     "tqdm",
     "scikit-learn",
     "matplotlib",
-    "transformers",
     "torch==2.4.1",
-    "torchvision",
+]
+
+[project.optional-dependencies]
+all = ["pylml[llm,cnn,vit]"]
+llm = [
+    "transformers",
     "datasets",
     "accelerate",
     "protobuf==5.28.2",
     "sentencepiece==0.2.0",
-    "bitsandbytes==0.44.1"
+    "bitsandbytes==0.44.1",
 ]
+cnn = [
+    "torchvision"
+]
+vit = [
+    "transformers",
+    "datasets",
+    "accelerate",
+    "protobuf==5.28.2",
+    "sentencepiece==0.2.0",
+    "bitsandbytes==0.44.1",
+]
+
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
